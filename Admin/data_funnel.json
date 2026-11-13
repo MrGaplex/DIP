@@ -1,0 +1,39 @@
+{
+  "summary": {
+    "total_prospek": 5400,
+    "rata_rata_probabilitas_konversi_persen": 17.5,
+    "rata_rata_probabilitas_attrition_persen": 82.5
+  },
+  "funnel_data": [
+    {
+      "tahun": 2024, "sumber_trafik": "Google Ads",
+      "prospek": 800, "berkuliah": 120, "konversi": 15, "attrition": 85,
+      "detail_tahap": { "web_visitor": 5000, "ingin_mendaftar": 1600, "lakukan_test": 800, "daftar_ulang": 300, "berkuliah": 120 }
+    },
+    {
+      "tahun": 2024, "sumber_trafik": "Instagram",
+      "prospek": 600, "berkuliah": 90, "konversi": 15, "attrition": 85,
+      "detail_tahap": { "web_visitor": 4200, "ingin_mendaftar": 1200, "lakukan_test": 600, "daftar_ulang": 220, "berkuliah": 90 }
+    },
+    {
+      "tahun": 2025, "sumber_trafik": "Google Ads",
+      "prospek": 1000, "berkuliah": 170, "konversi": 17, "attrition": 83,
+      "detail_tahap": { "web_visitor": 6000, "ingin_mendaftar": 2000, "lakukan_test": 1000, "daftar_ulang": 380, "berkuliah": 170 }
+    },
+    {
+      "tahun": 2025, "sumber_trafik": "Instagram",
+      "prospek": 800, "berkuliah": 144, "konversi": 18, "attrition": 82,
+      "detail_tahap": { "web_visitor": 5200, "ingin_mendaftar": 1600, "lakukan_test": 800, "daftar_ulang": 320, "berkuliah": 144 }
+    },
+    {
+      "tahun": 2026, "sumber_trafik": "Google Ads",
+      "prospek": 1200, "berkuliah": 228, "konversi": 19, "attrition": 81,
+      "detail_tahap": { "web_visitor": 7000, "ingin_mendaftar": 2400, "lakukan_test": 1200, "daftar_ulang": 480, "berkuliah": 228 }
+    },
+    {
+      "tahun": 2026, "sumber_trafik": "Instagram",
+      "prospek": 1000, "berkuliah": 210, "konversi": 21, "attrition": 79,
+      "detail_tahap": { "web_visitor": 6300, "ingin_mendaftar": 2000, "lakukan_test": 1000, "daftar_ulang": 430, "berkuliah": 210 }
+    }
+  ]
+}
