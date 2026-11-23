@@ -1825,19 +1825,18 @@ input {
 }
 
 .hero-frame {
-  width: fit-content;          /* kartu menyesuaikan lebar gambar */
-  max-width: 100%;
-  padding: 6px;                /* ketebalan bingkai gradien */
-  border-radius: 24px;
-  background: linear-gradient(135deg, #4338ca, #a855f7);
-  box-shadow: 0 20px 50px rgba(79, 70, 229, 0.35);
+  width: 100%;
+  padding: 0;
+  background: none;
+  border-radius: 0;
+  box-shadow: none;
 }
 .hero-img {
   display: block;
-  width: auto;
+  width: 100%;
   height: auto;
-  max-width: 100%;
-  max-height: 380px;           /* batas tinggi supaya tidak melewati layar */
-  border-radius: 18px;         /* kira-kira radius bingkai dikurangi padding */
-  object-fit: cover;
+  max-height: 380px;
+  object-fit: contain;
+  border-radius: 0;
+  filter: drop-shadow(0 20px 30px rgba(99, 102, 241, 0.35));
 }

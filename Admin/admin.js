@@ -1,335 +1,213 @@
-// guard login
-if (sessionStorage.getItem('loggedIn') !== 'true') {
-  window.location.href = '../Login/login.html';
-}
-
-// deklarasi variabel global
-let jsonData = null;
-let conversionChart = null;
-let studentChart = null;
+// ===== ADMIN.JS - SEBELAH (Supabase) =====
 const COLORS = {
-  success: '#6366f1',            // ungu-biru (indigo)
-  failure: '#a855f7',            // ungu
-  line: '#38bdf8',               // biru langit
-  lineFill: 'rgba(56,189,248,0.15)',
-  text: '#cbd5e1',               // teks sumbu
-  grid: 'rgba(148,163,184,0.15)' // garis grid
+  a: '#6366f1', b: '#a855f7', c: '#38bdf8', d: '#f59e0b',
+  text: '#cbd5e1', grid: 'rgba(148,163,184,0.15)'
 };
+const BULAN = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+const DB = { reguler: [], charter: [] };
+const charts = {};
 
-async function loadData() { // fungsi untuk mengambil data dari file json (ambil file data_funnel.json, simpan ke variabel jsonData, lalu panggil fungsi halaman yang sesuai.)
-  try { // pola penanganan error (try dan catch)
-    const response = await fetch('data_funnel.json'); // fetch untuk mengambil data_funnel.json
-    if (!response.ok) throw new Error('File tidak ditemukan');
-    jsonData = await response.json(); /// Mengubah teks JSON mentah menjadi objek JavaScript dan menyimpannya ke variabel global jsonData
-
-    const path = window.location.pathname.toLowerCase();
-    if (path.includes('traffic-sources')) {
-    initTrafficSources();
-    } else if (path.includes('annual-stages')) {
-    initAnnualStages();
-    } else {
-    initDashboard();
+// ---------- helpers ----------
+const $ = id => document.getElementById(id);
+const sum = (arr, k) => arr.reduce((s, d) => s + Number(d[k] || 0), 0);
+const setText = (id, v) => { const el = $(id); if (el) el.textContent = v; };
+const pctText = n => (n > 0 ? '+' : '') + n.toFixed(1) + '%';
+function rp(n) {
+  n = Math.round(n);
+  if (Math.abs(n) >= 1e9) return 'Rp ' + (n / 1e9).toFixed(2).replace('.', ',') + ' M';
+  if (Math.abs(n) >= 1e6) return 'Rp ' + (n / 1e6).toFixed(1).replace('.', ',') + ' jt';
+  return 'Rp ' + n.toLocaleString('id-ID');
+}
+function groupSum(rows, keyField, valField) {
+  const m = {};
+  rows.forEach(d => { m[d[keyField]] = (m[d[keyField]] || 0) + Number(d[valField]); });
+  return m;
+}
+function allYears() {
+  return [...new Set([...DB.reguler, ...DB.charter].map(d => d.tahun))].sort();
+}
+function maxMonth(y) {
+  const all = [...DB.reguler, ...DB.charter].filter(d => d.tahun === y);
+  return all.length ? Math.max(...all.map(d => d.bulan)) : 12;
+}
+function fillYearSelect(id) {
+  const sel = $(id); if (!sel) return;
+  const ys = allYears();
+  sel.innerHTML = ys.map(y => `<option value="${y}">${y}</option>`).join('');
+  sel.value = ys[ys.length - 1];
+}
+function makeChart(id, config) {
+  const canvas = $(id); if (!canvas) return;
+  if (charts[id]) charts[id].destroy();
+  charts[id] = new Chart(canvas, config);
+}
+function opts(extra = {}, horizontal = false) {
+  return Object.assign({
+    responsive: true, maintainAspectRatio: false,
+    indexAxis: horizontal ? 'y' : 'x',
+    plugins: { legend: { labels: { color: COLORS.text } } },
+    scales: {
+      x: { ticks: { color: COLORS.text }, grid: { color: horizontal ? COLORS.grid : 'transparent' } },
+      y: { beginAtZero: true, ticks: { color: COLORS.text }, grid: { color: horizontal ? 'transparent' : COLORS.grid } }
     }
-  } catch (error) {
-    console.error('Error fetch:', error);
+  }, extra);
+}
+function sortedEntries(obj) { return Object.entries(obj).sort((a, b) => b[1] - a[1]); }
+
+// ---------- auth ----------
+async function logout() {
+  await sb.auth.signOut();
+  window.location.href = '../Index/index.html';
+}
+
+// ---------- init ----------
+async function init() {
+  const { data } = await sb.auth.getSession();
+  if (!data.session) { window.location.href = '../Index/index.html'; return; }
+  try {
+    const [r, c] = await Promise.all([
+      sb.from('rute_reguler').select('*').limit(1000),
+      sb.from('charter_wisata').select('*').limit(1000)
+    ]);
+    if (r.error) throw r.error;
+    if (c.error) throw c.error;
+    DB.reguler = r.data; DB.charter = c.data;
+  } catch (e) {
+    console.error(e);
     const main = document.querySelector('.page-content');
-    if (main) {
-      main.innerHTML = '<p style="color:#ef4444;padding:2rem;text-align:center;">Gagal memuat data. Pastikan file <strong>data_funnel.json</strong> sudah ada.</p>';
-    }
+    if (main) main.innerHTML = '<p style="color:#f43f5e;padding:2rem;text-align:center;">Gagal memuat data dari Supabase. Cek Console (F12).</p>';
+    return;
   }
+  const p = window.location.pathname.toLowerCase();
+  if (p.includes('rute-reguler')) initRute();
+  else if (p.includes('wisata-charter')) initCharter();
+  else initDashboard();
 }
 
-// ============================================================
-// DASHBOARD
-// ============================================================
+// ---------- DASHBOARD ----------
 function initDashboard() {
- const rows = jsonData.funnel_data;
- const totalP = rows.reduce((a, d) => a + d.prospek, 0);
- const totalB = rows.reduce((a, d) => a + d.berkuliah, 0);
- const konv = Math.round((totalB / totalP) * 100);
- const s = {
-  total_prospek: totalP,
-  rata_rata_probabilitas_konversi_persen: konv,
-  rata_rata_probabilitas_attrition_persen: 100 - konv
-};
-  setText('stat-total-leads',    s.total_prospek);
-  setText('stat-retention-rate', s.rata_rata_probabilitas_konversi_persen + '%');
-  setText('stat-success-rate',   s.rata_rata_probabilitas_konversi_persen + '%');
-  setText('stat-failure-rate',   s.rata_rata_probabilitas_attrition_persen + '%');
-
-  // hitung persentase leads tiap tahun dibanding tahun sebelumnya
-  const total2025 = getTotalLeads(2025); 
-  const total2026 = getTotalLeads(2026);
-  const pct = Math.round(((total2026 - total2025) / total2025) * 100); // rumus peresentase perubahan perbandingan tahun
-  setText('stat-total-change', (pct > 0 ? '+' : '') + pct + '%');
-
-  // panggil fungsi render chart
-  renderConversionChart();
-  renderStudentGrowthChart();
+  fillYearSelect('yearFilter');
+  $('yearFilter').addEventListener('change', renderDashboard);
+  renderDashboard();
 }
+function renderDashboard() {
+  const y = +$('yearFilter').value, mm = maxMonth(y);
+  const pick = (arr, yr) => arr.filter(d => d.tahun === yr && d.bulan <= mm);
+  const r = pick(DB.reguler, y), c = pick(DB.charter, y);
+  const gross = sum(r, 'pendapatan_kotor') + sum(c, 'pendapatan_kotor');
+  const cost = sum(r, 'biaya_operasional') + sum(c, 'biaya_operasional');
+  const net = gross - cost;
+  const occ = sum(r, 'penumpang') / (sum(r, 'kursi_tersedia') || 1) * 100;
 
-function renderConversionChart() {
-  const canvas = document.getElementById('conversionChart');
-  if (!canvas) return;
-  if (conversionChart) conversionChart.destroy();
+  const pr = pick(DB.reguler, y - 1), pc = pick(DB.charter, y - 1);
+  const prevGross = sum(pr, 'pendapatan_kotor') + sum(pc, 'pendapatan_kotor');
+  setText('stat-revenue', rp(gross));
+  setText('stat-revenue-change', prevGross ? pctText((gross - prevGross) / prevGross * 100) + ' vs ' + (y - 1) : '');
+  setText('stat-net', rp(net));
+  setText('stat-margin', 'margin ' + (gross ? (net / gross * 100).toFixed(1) : 0) + '%');
+  setText('stat-occupancy', occ.toFixed(1) + '%');
+  setText('stat-charter', sum(c, 'jumlah_charter'));
+  setText('periode-info', `Periode: Jan - ${BULAN[mm - 1]} ${y}` + (prevGross ? ` (dibanding Jan - ${BULAN[mm - 1]} ${y - 1})` : ''));
 
-  // FIX 1: grouped - batang berdampingan
-  conversionChart = new Chart(canvas, {
-    type: 'bar',
-    data: {
-      labels: ['2024', '2025', '2026'],
-      datasets: [
-        {
-          label: 'Failure',
-          data: [2024, 2025, 2026].map(y => getTotalLeads(y) - getTotalBerkuliah(y)),
-          backgroundColor: COLORS.failure ,
-          borderRadius: 4
-        },
-        {
-          label: 'Success',
-          data: [2024, 2025, 2026].map(y => getTotalBerkuliah(y)),
-          backgroundColor: COLORS.success,
-          borderRadius: 4
-        }
-      ]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
-      scales: {
-      x: { stacked: false, grid: { display: false }, ticks: { color: COLORS.text } },
-      y: { stacked: false, beginAtZero: true, grid: { color: COLORS.grid }, ticks: { color: COLORS.text } }
-      }
-    }
+  const monthly = (arr, yr) => BULAN.map((_, i) => {
+    const rows = arr.filter(d => d.tahun === yr && d.bulan === i + 1);
+    return rows.length ? sum(rows, 'pendapatan_kotor') : null;
   });
-}
-
-function renderStudentGrowthChart() {
-  const canvas = document.getElementById('studentGrowthChart');
-  if (!canvas) return;
-  if (studentChart) studentChart.destroy();
-  studentChart = new Chart(canvas, {
+  makeChart('monthlyChart', {
     type: 'line',
-    data: {
-      labels: ['2024', '2025', '2026'],
-      datasets: [{
-        label: 'Berkuliah',
-        data: [2024, 2025, 2026].map(y => getTotalBerkuliah(y)),
-        borderColor: COLORS.line,
-        backgroundColor: COLORS.lineFill,
-        borderWidth: 2,
-        pointRadius: 5,
-        fill: true,
-        tension: 0.3
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
-      scales: {
-      x: { grid: { display: false }, ticks: { color: COLORS.text } },
-      y: { beginAtZero: true, grid: { color: COLORS.grid }, ticks: { color: COLORS.text } }
-      }
-    }
+    data: { labels: BULAN, datasets: [
+      { label: 'Reguler', data: monthly(DB.reguler, y), borderColor: COLORS.a, backgroundColor: 'rgba(99,102,241,0.15)', fill: true, tension: 0.3 },
+      { label: 'Charter Wisata', data: monthly(DB.charter, y), borderColor: COLORS.d, backgroundColor: 'rgba(245,158,11,0.12)', fill: true, tension: 0.3 }
+    ] },
+    options: opts()
+  });
+  const byRoute = sortedEntries(groupSum(DB.reguler.filter(d => d.tahun === y), 'rute', 'pendapatan_kotor'));
+  makeChart('routeChart', {
+    type: 'bar',
+    data: { labels: byRoute.map(e => e[0]), datasets: [{ label: 'Pendapatan kotor', data: byRoute.map(e => e[1]), backgroundColor: COLORS.b, borderRadius: 4 }] },
+    options: opts({ plugins: { legend: { display: false } } }, true)
   });
 }
 
-// ============================================================
-// TRAFFIC SOURCES
-// ============================================================
-function initTrafficSources() {
-  showTotalTraffic2026();
-
-  const filter = document.getElementById('tsFilter');
-  if (filter) {
-    filter.addEventListener('change', function () {
-      if (this.value === '') {
-        showTotalTraffic2026();
-      } else {
-        updateTraffic(this.value);
-      }
-    });
-  }
+// ---------- RUTE REGULER ----------
+function initRute() {
+  fillYearSelect('yearFilter');
+  const routes = [...new Set(DB.reguler.map(d => d.rute))].sort();
+  $('routeFilter').innerHTML = '<option value="">Semua Rute</option>' + routes.map(x => `<option>${x}</option>`).join('');
+  $('yearFilter').addEventListener('change', renderRute);
+  $('routeFilter').addEventListener('change', renderRute);
+  renderRute();
 }
+function renderRute() {
+  const y = +$('yearFilter').value, rt = $('routeFilter').value;
+  const yearRows = DB.reguler.filter(d => d.tahun === y);
+  const rows = rt ? yearRows.filter(d => d.rute === rt) : yearRows;
+  const pax = sum(rows, 'penumpang'), seats = sum(rows, 'kursi_tersedia');
+  setText('stat-pax', pax.toLocaleString('id-ID'));
+  setText('stat-seats', seats.toLocaleString('id-ID'));
+  setText('stat-occ', (pax / (seats || 1) * 100).toFixed(1) + '%');
+  setText('stat-rev', rp(sum(rows, 'pendapatan_kotor')));
 
-function showTotalTraffic2026() { // 2026 seluruhnya
-  const rows = jsonData.funnel_data.filter(d => d.tahun === 2026);
-  const totalP = rows.reduce((s, d) => s + d.prospek, 0); // totalP = total prospek 
-  const totalB = rows.reduce((s, d) => s + d.berkuliah, 0); // totalB = total berkuliah
-  const ret    = Math.round((totalB / totalP) * 100); // rumus persentase retention 
-
-  setText('ts-total',     totalP);
-  setText('ts-retention', ret + '%');
-  setText('ts-success',   ret + '%');
-  setText('ts-attrition', (100 - ret) + '%'); // rumus persentase attrition
-  setText('ts-pct',       '100%');
-
-// hitung pipeline
-  const keys = ['web_visitor', 'ingin_mendaftar', 'lakukan_test', 'daftar_ulang', 'berkuliah'];
-  const totals = keys.map(k => rows.reduce((s, d) => s + d.detail_tahap[k], 0));
-  const yieldPct = Math.round((totals[4] / totals[0]) * 100);
-
-  setText('ts-yield',    yieldPct + '%');
-  setText('ts-s1-count', totals[0]);
-  setText('ts-s1-rate',  '100%');
-  for (let i = 1; i <= 4; i++) { // loop untuk menghitung konversi tiap tahun
-    const conv = Math.round((totals[i] / totals[i - 1]) * 100); // total sekarang dibagi total sebelumnya, dikali 100
-    setText('ts-s' + (i + 1) + '-count', totals[i]);
-    setText('ts-s' + (i + 1) + '-rate',  i < 4 ? conv + '% CONV' : yieldPct + '% YIELD');
-  }
-}
-
-function updateTraffic(val) { // untuk sumber traffic terntu (GA or IG)
-  const map = { 'google-ads': 'Google Ads', 'instagram': 'Instagram' }; // dropdown sumber trafik
-  const sumber = map[val];
-  if (!sumber) return;
-
-  const row = jsonData.funnel_data.find(d => d.tahun === 2026 && d.sumber_trafik === sumber);
-  if (!row) return;
-
-  setText('ts-total',     row.prospek);
-  setText('ts-retention', row.konversi + '%');
-  setText('ts-success',   row.konversi + '%');
-  setText('ts-attrition', row.attrition + '%');
-
-  const kontribusi = Math.round((row.prospek / getTotalLeads(2026)) * 100); // ngitung kontribusi/porsi sumber trafik yang dipilih dari total keseluruhan 2026
-  setText('ts-pct', kontribusi + '%');
-
-  const d = row.detail_tahap;
-  const stages = [d.web_visitor, d.ingin_mendaftar, d.lakukan_test, d.daftar_ulang, d.berkuliah];
-  const yieldPct = Math.round((stages[4] / stages[0]) * 100); // rumus persentase yeild 
-
-  setText('ts-yield',    yieldPct + '%');
-  setText('ts-s1-count', stages[0]);
-  setText('ts-s1-rate',  '100%');
-  for (let i = 1; i <= 4; i++) {
-    const conv = Math.round((stages[i] / stages[i - 1]) * 100);
-    setText('ts-s' + (i + 1) + '-count', stages[i]);
-    setText('ts-s' + (i + 1) + '-rate',  i < 4 ? conv + '% CONV' : yieldPct + '% YIELD');
-  }
-}
-
-// ============================================================
-// ANNUAL STAGES
-// FIX 3: slider span tab klik
-// ============================================================
-const YEARS = [2024, 2025, 2026];
-
-function initAnnualStages() {
-  const yearList = document.getElementById('yearList');
-  if (!yearList) return;
-
-  // Sembunyikan tombol panah
-  const prev = document.getElementById('prevYearBtn');
-  const next = document.getElementById('nextYearBtn');
-  if (prev) prev.style.display = 'none';
-  if (next) next.style.display = 'none';
-
-  // Buat tab tahun pakai span
-  yearList.innerHTML = '';
-  YEARS.forEach((yr, i) => {
-    const span = document.createElement('span');
-    span.textContent = yr;
-    span.style.cssText = `
-      padding: 6px 20px;
-      cursor: pointer;
-      font-size: 15px;
-      font-weight: 500;
-      color: ${i === 2 ? '#fff' : '#888'};
-      background: ${i === 2 ? COLORS.success : 'transparent'};
-      border-radius: 20px;
-      transition: all 0.2s;
-    `;
-    span.onclick = () => {
-      // Reset semua span
-      yearList.querySelectorAll('span').forEach(s => {
-        s.style.color = '#888';
-        s.style.background = 'transparent';
-      });
-      // Aktifkan yang diklik
-      span.style.color = '#fff';
-      span.style.background = COLORS.success;
-      updateAnnual(yr);
-    };
-    yearList.appendChild(span);
+  const paxBy = groupSum(yearRows, 'rute', 'penumpang'), seatBy = groupSum(yearRows, 'rute', 'kursi_tersedia');
+  const occ = Object.keys(paxBy).map(k => [k, paxBy[k] / seatBy[k] * 100]).sort((a, b) => b[1] - a[1]);
+  setText('top-route', occ.length ? `Rute terlaris ${y}: ${occ[0][0]} (okupansi ${occ[0][1].toFixed(1)}%)` : '');
+  makeChart('occupancyChart', {
+    type: 'bar',
+    data: { labels: occ.map(e => e[0]), datasets: [{ label: 'Okupansi (%)', data: occ.map(e => +e[1].toFixed(1)), backgroundColor: COLORS.a, borderRadius: 4 }] },
+    options: opts({ plugins: { legend: { display: false } } }, true)
   });
-
-  updateAnnual(2026);
+  const per = k => BULAN.map((_, i) => { const m = rows.filter(d => d.bulan === i + 1); return m.length ? sum(m, k) : null; });
+  makeChart('seatsChart', {
+    type: 'bar',
+    data: { labels: BULAN, datasets: [
+      { label: 'Kursi tersedia', data: per('kursi_tersedia'), backgroundColor: COLORS.c, borderRadius: 4 },
+      { label: 'Penumpang naik', data: per('penumpang'), backgroundColor: COLORS.b, borderRadius: 4 }
+    ] },
+    options: opts()
+  });
 }
 
-// changeYear tetap ada untuk jaga-jaga kalau HTML masih pakai onclick
-function changeYear(dir) {
-  const slider = document.getElementById('yearSlider');
-  if (!slider) return;
-  const n = Math.min(2, Math.max(0, parseInt(slider.value) + dir));
-  slider.value = n;
-  const yr = YEARS[n];
-  document.getElementById('year-display').textContent = yr;
-  updateAnnual(yr);
+// ---------- WISATA CHARTER ----------
+function initCharter() {
+  fillYearSelect('yearFilter');
+  $('yearFilter').addEventListener('change', renderCharter);
+  renderCharter();
+}
+function renderCharter() {
+  const y = +$('yearFilter').value;
+  const rows = DB.charter.filter(d => d.tahun === y);
+  const n = sum(rows, 'jumlah_charter'), hari = sum(rows, 'total_hari_sewa');
+  setText('stat-ch-total', n.toLocaleString('id-ID'));
+  setText('stat-ch-hari', hari.toLocaleString('id-ID'));
+  setText('stat-ch-avg', (hari / (n || 1)).toFixed(1) + ' hari');
+  setText('stat-ch-rev', rp(sum(rows, 'pendapatan_kotor')));
+
+  const perMonth = BULAN.map((_, i) => { const m = rows.filter(d => d.bulan === i + 1); return m.length ? sum(m, 'jumlah_charter') : null; });
+  makeChart('charterMonthChart', {
+    type: 'bar',
+    data: { labels: BULAN, datasets: [{ label: 'Jumlah charter', data: perMonth, backgroundColor: COLORS.d, borderRadius: 4 }] },
+    options: opts({ plugins: { legend: { display: false } } })
+  });
+  const armadas = ['Bus Besar', 'Bus Medium', 'Elf'];
+  const cBy = groupSum(rows, 'armada', 'jumlah_charter'), hBy = groupSum(rows, 'armada', 'total_hari_sewa');
+  makeChart('armadaChart', {
+    type: 'bar',
+    data: { labels: armadas, datasets: [
+      { label: 'Jumlah charter', data: armadas.map(a => cBy[a] || 0), backgroundColor: COLORS.a, borderRadius: 4, yAxisID: 'y' },
+      { label: 'Total hari sewa', data: armadas.map(a => hBy[a] || 0), backgroundColor: COLORS.c, borderRadius: 4, yAxisID: 'y1' }
+    ] },
+    options: opts({ scales: {
+      x: { ticks: { color: COLORS.text }, grid: { display: false } },
+      y: { beginAtZero: true, ticks: { color: COLORS.text }, grid: { color: COLORS.grid } },
+      y1: { beginAtZero: true, position: 'right', ticks: { color: COLORS.text }, grid: { display: false } }
+    } })
+  });
+  const tj = sortedEntries(groupSum(rows, 'tujuan', 'jumlah_charter'));
+  makeChart('tujuanChart', {
+    type: 'bar',
+    data: { labels: tj.map(e => e[0]), datasets: [{ label: 'Jumlah charter', data: tj.map(e => e[1]), backgroundColor: COLORS.b, borderRadius: 4 }] },
+    options: opts({ plugins: { legend: { display: false } } }, true)
+  });
 }
 
-function updateAnnual(tahun) {
-  const rows = jsonData.funnel_data.filter(d => d.tahun === tahun); // ambil data berdasarkan tahun yg dipilih
-  if (!rows.length) return;
-
-  const totalP = rows.reduce((s, d) => s + d.prospek, 0);
-  const totalB = rows.reduce((s, d) => s + d.berkuliah, 0);
-  const ret    = Math.round((totalB / totalP) * 100); // rumus persentase retenttion rate
-
-  setText('as-total',     totalP);
-  setText('as-retention', ret + '%');
-  setText('as-success',   ret + '%');
-  setText('as-attrition', (100 - ret) + '%');
-
-  const prevRows = jsonData.funnel_data.filter(d => d.tahun === tahun - 1); // Ambil data tahun sebelumnya (untuk hitung persentase perubahan).
-  if (prevRows.length) {
-    const prevP = prevRows.reduce((s, d) => s + d.prospek, 0);
-    const pct   = Math.round(((totalP - prevP) / prevP) * 100);
-    setText('as-pct', (pct > 0 ? '+' : '') + pct + '%');
-  } else {
-    setText('as-pct', '-');
-  }
-
-  // hitung pipeline
-  const keys = ['web_visitor', 'ingin_mendaftar', 'lakukan_test', 'daftar_ulang', 'berkuliah'];
-  const totals = keys.map(k => rows.reduce((s, d) => s + d.detail_tahap[k], 0));
-  const yieldPct = Math.round((totals[4] / totals[0]) * 100);
-
-  setText('as-yield',    yieldPct + '%');
-  setText('as-s1-count', totals[0]);
-  setText('as-s1-rate',  '100%');
-  for (let i = 1; i <= 4; i++) { // loop untuk menghitung konversi tiap tahun
-    const conv = Math.round((totals[i] / totals[i - 1]) * 100);
-    setText('as-s' + (i + 1) + '-count', totals[i]);
-    setText('as-s' + (i + 1) + '-rate',  i < 4 ? conv + '% CONV' : yieldPct + '% YIELD');
-  }
-}
-
-// ============================================================
-// HELPERS
-// ============================================================
-function setText(id, val) {
-  const el = document.getElementById(id);
-  if (el) el.textContent = val;
-}
-
-function getTotalLeads(tahun) {
-  return jsonData.funnel_data
-    .filter(d => d.tahun === tahun)
-    .reduce((s, d) => s + d.prospek, 0);
-}
-
-function getTotalBerkuliah(tahun) {
-  return jsonData.funnel_data
-    .filter(d => d.tahun === tahun)
-    .reduce((s, d) => s + d.berkuliah, 0);
-}
-
-function logout() {
-  sessionStorage.removeItem('loggedIn');
-  window.location.href = '../Login/login.html';
-}
-
-loadData();
+init();
