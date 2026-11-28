@@ -50,6 +50,7 @@ a:hover {
 }
 button {
   cursor: pointer;
+  margin-left:auto;
   font-family: inherit;
 }
 input {
@@ -1872,7 +1873,6 @@ input {
   color: #a5b4fc;
 }
 
-/* Bottom bar mobile */
 @media (max-width: 768px) {
   .sidebar {
     background: var(--card);
@@ -1881,4 +1881,8 @@ input {
 
 .ts-card {
   padding-bottom: 24px;
+}
+
+.stat-value h2 { 
+  font-size: 26px; white-space: nowrap; 
 }
