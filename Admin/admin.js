@@ -208,6 +208,34 @@ function renderCharter() {
     data: { labels: tj.map(e => e[0]), datasets: [{ label: 'Jumlah charter', data: tj.map(e => e[1]), backgroundColor: COLORS.b, borderRadius: 4 }] },
     options: opts({ plugins: { legend: { display: false } } }, true)
   });
+  const N8N_WEBHOOK_URL = 'TEMPEL_PRODUCTION_URL_DI_SINI';
+
+async function kirimKeTelegram() {
+  const y = +$('yearFilter').value, mm = maxMonth(y);
+  const r = DB.reguler.filter(d => d.tahun === y && d.bulan <= mm);
+  const c = DB.charter.filter(d => d.tahun === y && d.bulan <= mm);
+  const gross = sum(r, 'pendapatan_kotor') + sum(c, 'pendapatan_kotor');
+  const cost = sum(r, 'biaya_operasional') + sum(c, 'biaya_operasional');
+  const payload = {
+    tahun: y,
+    periode: 'Jan - ' + BULAN[mm - 1],
+    pendapatan_kotor: gross,
+    laba_bersih: gross - cost,
+    okupansi: +(sum(r, 'penumpang') / (sum(r, 'kursi_tersedia') || 1) * 100).toFixed(1),
+    total_charter: sum(c, 'jumlah_charter')
+  };
+  try {
+    const res = await fetch(N8N_WEBHOOK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    alert(res.ok ? 'Terkirim ke Telegram.' : 'Gagal mengirim (status ' + res.status + ').');
+  } catch (e) {
+    console.error(e);
+    alert('Gagal mengirim. Cek Console (F12).');
+  }
+ }
 }
 
 init();
